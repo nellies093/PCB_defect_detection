@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>PCBDEF_mouse_bite_rotation_270_light_11_mouse_bite_02_2_600.jpg</filename><size><width>601</width><height>601</height><depth>3</depth></size><segmented>0</segmented><object><name>mouse_bite</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>476</xmin><ymin>508</ymin><xmax>504</xmax><ymax>553</ymax></bndbox></object></annotation>

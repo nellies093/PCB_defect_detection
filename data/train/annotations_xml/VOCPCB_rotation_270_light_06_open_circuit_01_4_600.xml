@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>VOCPCB_rotation_270_light_06_open_circuit_01_4_600.jpg</filename><size><width>601</width><height>601</height><depth>3</depth></size><segmented>0</segmented><object><name>open_circuit</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>319</xmin><ymin>7</ymin><xmax>336</xmax><ymax>22</ymax></bndbox></object></annotation>

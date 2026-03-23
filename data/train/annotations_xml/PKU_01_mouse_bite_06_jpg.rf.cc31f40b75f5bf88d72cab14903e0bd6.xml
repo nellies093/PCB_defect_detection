@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>PKU_01_mouse_bite_06_jpg.rf.cc31f40b75f5bf88d72cab14903e0bd6.jpg</filename><size><width>640</width><height>640</height><depth>3</depth></size><segmented>0</segmented><object><name>mouse_bite</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>596</xmin><ymin>168</ymin><xmax>605</xmax><ymax>187</ymax></bndbox></object></annotation>

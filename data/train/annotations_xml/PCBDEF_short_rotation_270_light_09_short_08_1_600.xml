@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>PCBDEF_short_rotation_270_light_09_short_08_1_600.jpg</filename><size><width>601</width><height>601</height><depth>3</depth></size><segmented>0</segmented><object><name>short</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>141</xmin><ymin>446</ymin><xmax>181</xmax><ymax>477</ymax></bndbox></object></annotation>

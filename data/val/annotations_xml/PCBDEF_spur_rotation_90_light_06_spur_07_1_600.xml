@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>PCBDEF_spur_rotation_90_light_06_spur_07_1_600.jpg</filename><size><width>600</width><height>600</height><depth>3</depth></size><segmented>0</segmented><object><name>spur</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>207</xmin><ymin>150</ymin><xmax>240</xmax><ymax>177</ymax></bndbox></object></annotation>

@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>VOCPCB_rotation_90_light_09_mouse_bite_07_2_600.jpg</filename><size><width>600</width><height>600</height><depth>3</depth></size><segmented>0</segmented><object><name>mouse_bite</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>18</xmin><ymin>130</ymin><xmax>43</xmax><ymax>161</ymax></bndbox></object></annotation>

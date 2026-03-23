@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>PKU_04_short_18_jpg.rf.2b14fd79f89c8af24fba0fb2a5bcc648.jpg</filename><size><width>640</width><height>640</height><depth>3</depth></size><segmented>0</segmented><object><name>short</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>66</xmin><ymin>536</ymin><xmax>98</xmax><ymax>578</ymax></bndbox></object></annotation>

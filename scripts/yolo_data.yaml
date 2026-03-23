@@ -1,0 +1,12 @@
+path: .
+train: data/train/images
+val: data/val/images
+test: data/test/images
+
+names:
+  0: missing_hole
+  1: mouse_bite
+  2: open_circuit
+  3: short
+  4: spur
+  5: spurious_copper

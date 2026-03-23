@@ -1,0 +1,161 @@
+{
+  "generated_at_utc": "2026-03-22T08:30:40.972242+00:00",
+  "dataset_root": "D:\\CS\\DeepLearning\\midterm\\PCB_Defect_Dataset",
+  "classes": [
+    "missing_hole",
+    "mouse_bite",
+    "open_circuit",
+    "short",
+    "spur",
+    "spurious_copper"
+  ],
+  "split_image_counts": {
+    "train": 19913,
+    "val": 2489,
+    "test": 2490
+  },
+  "split_label_file_counts": {
+    "train": 19913,
+    "val": 2489,
+    "test": 2490
+  },
+  "split_bbox_counts": {
+    "train": 42828,
+    "val": 5341,
+    "test": 5395
+  },
+  "total_images": 24892,
+  "total_labels": 53564,
+  "image_count_per_class": {
+    "missing_hole": 3945,
+    "mouse_bite": 4029,
+    "open_circuit": 3823,
+    "short": 3822,
+    "spur": 3854,
+    "spurious_copper": 3863
+  },
+  "bbox_summary_overall": {
+    "count": 53564,
+    "width_min": 0.004687,
+    "width_max": 0.489781,
+    "width_mean": 0.044805564408935614,
+    "height_min": 0.003125,
+    "height_max": 0.403627,
+    "height_mean": 0.045613573146147425,
+    "area_min": 3.1465058e-05,
+    "area_max": 0.055353284919999995,
+    "area_mean": 0.0021660065887453054
+  },
+  "bbox_summary_by_split": {
+    "train": {
+      "count": 42828,
+      "width_min": 0.004687,
+      "width_max": 0.489781,
+      "width_mean": 0.04476648019987299,
+      "height_min": 0.003125,
+      "height_max": 0.403627,
+      "height_mean": 0.04557647179415761,
+      "area_min": 3.1465058e-05,
+      "area_max": 0.033265444359,
+      "area_mean": 0.0021614271902275634
+    },
+    "val": {
+      "count": 5341,
+      "width_min": 0.005469,
+      "width_max": 0.260026,
+      "width_mean": 0.044814074517880685,
+      "height_min": 0.00519,
+      "height_max": 0.252565,
+      "height_mean": 0.04595945740498031,
+      "area_min": 8.061054e-05,
+      "area_max": 0.0247104,
+      "area_mean": 0.0021869930481999474
+    },
+    "test": {
+      "count": 5395,
+      "width_min": 0.008594,
+      "width_max": 0.346137,
+      "width_mean": 0.045107407970342975,
+      "height_min": 0.003125,
+      "height_max": 0.27019,
+      "height_mean": 0.045565678591288156,
+      "area_min": 6.3478125e-05,
+      "area_max": 0.055353284919999995,
+      "area_mean": 0.0021815835673868267
+    }
+  },
+  "bbox_summary_by_class": {
+    "missing_hole": {
+      "count": 8912,
+      "width_min": 0.005469,
+      "width_max": 0.115,
+      "width_mean": 0.043248842571814924,
+      "height_min": 0.0125,
+      "height_max": 0.1167,
+      "height_mean": 0.04405009212298148,
+      "area_min": 0.000179454297,
+      "area_max": 0.01167,
+      "area_mean": 0.0020846176704071803
+    },
+    "mouse_bite": {
+      "count": 9161,
+      "width_min": 0.00625,
+      "width_max": 0.093333,
+      "width_mean": 0.0398326649929057,
+      "height_min": 0.005797,
+      "height_max": 0.104166,
+      "height_mean": 0.0407602702761715,
+      "area_min": 5.21686e-05,
+      "area_max": 0.005614109999999999,
+      "area_mean": 0.0016900081043034491
+    },
+    "open_circuit": {
+      "count": 8705,
+      "width_min": 0.005267,
+      "width_max": 0.088333,
+      "width_mean": 0.03279646639862175,
+      "height_min": 0.003125,
+      "height_max": 0.09,
+      "height_mean": 0.03345183676048266,
+      "area_min": 3.1465058e-05,
+      "area_max": 0.00513331,
+      "area_mean": 0.001180288530343351
+    },
+    "short": {
+      "count": 8734,
+      "width_min": 0.010937,
+      "width_max": 0.1967,
+      "width_mean": 0.05343402404396699,
+      "height_min": 0.003125,
+      "height_max": 0.198333,
+      "height_mean": 0.0547650238149771,
+      "area_min": 6.3478125e-05,
+      "area_max": 0.024791625,
+      "area_mean": 0.003235653768797439
+    },
+    "spur": {
+      "count": 8986,
+      "width_min": 0.004687,
+      "width_max": 0.123333,
+      "width_mean": 0.047179726463388076,
+      "height_min": 0.00519,
+      "height_max": 0.123333,
+      "height_mean": 0.04786001480080146,
+      "area_min": 6.245420700000001e-05,
+      "area_max": 0.008311048889,
+      "area_mean": 0.002289385771028146
+    },
+    "spurious_copper": {
+      "count": 9066,
+      "width_min": 0.004687,
+      "width_max": 0.489781,
+      "width_mean": 0.05222606386499037,
+      "height_min": 0.009375,
+      "height_max": 0.403627,
+      "height_mean": 0.05268918210897886,
+      "area_min": 0.000124496094,
+      "area_max": 0.055353284919999995,
+      "area_mean": 0.002520700174893762
+    }
+  }
+}

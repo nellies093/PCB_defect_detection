@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>PCBDEF_spurious_rotation_270_light_09_spurious_copper_10_1_600.jpg</filename><size><width>601</width><height>601</height><depth>3</depth></size><segmented>0</segmented><object><name>spurious_copper</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>250</xmin><ymin>360</ymin><xmax>282</xmax><ymax>407</ymax></bndbox></object></annotation>

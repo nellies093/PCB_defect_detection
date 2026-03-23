@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>PCBDEF_open_circuit_rotation_270_light_07_open_circuit_10_1_600.jpg</filename><size><width>601</width><height>601</height><depth>3</depth></size><segmented>0</segmented><object><name>open_circuit</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>103</xmin><ymin>556</ymin><xmax>126</xmax><ymax>580</ymax></bndbox></object></annotation>

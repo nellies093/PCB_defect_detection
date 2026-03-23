@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>VOCPCB_light_04_missing_hole_01_3_600.jpg</filename><size><width>600</width><height>600</height><depth>3</depth></size><segmented>0</segmented><object><name>missing_hole</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>229</xmin><ymin>307</ymin><xmax>247</xmax><ymax>333</ymax></bndbox></object></annotation>

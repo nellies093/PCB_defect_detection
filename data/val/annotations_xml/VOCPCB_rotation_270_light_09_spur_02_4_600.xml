@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>VOCPCB_rotation_270_light_09_spur_02_4_600.jpg</filename><size><width>601</width><height>601</height><depth>3</depth></size><segmented>0</segmented><object><name>spur</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>451</xmin><ymin>235</ymin><xmax>492</xmax><ymax>260</ymax></bndbox></object></annotation>

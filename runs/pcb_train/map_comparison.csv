@@ -1,0 +1,7 @@
+model,mAP50-95,mAP50,run_dir,source,note
+yolo11n,,,,,Run directory not found
+retinanet,,,,,Run directory not found
+faster_rcnn,,,,,Run directory not found
+cascade_rcnn,,,,,Run directory not found
+detr,,,,,Run directory not found
+deformable_detr,,,,,Run directory not found

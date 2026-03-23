@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>PCBDEF_missing_hole_rotation_270_light_01_missing_hole_20_3_600.jpg</filename><size><width>601</width><height>601</height><depth>3</depth></size><segmented>0</segmented><object><name>missing_hole</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>268</xmin><ymin>351</ymin><xmax>305</xmax><ymax>388</ymax></bndbox></object></annotation>

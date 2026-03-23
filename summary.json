@@ -1,0 +1,22 @@
+{
+  "total_images": 24892,
+  "split_counts": {
+    "train": 19913,
+    "val": 2489,
+    "test": 2490
+  },
+  "ratio": "80/10/10",
+  "formats": [
+    "YOLO txt",
+    "Pascal VOC xml",
+    "COCO json"
+  ],
+  "classes": [
+    "missing_hole",
+    "mouse_bite",
+    "open_circuit",
+    "short",
+    "spur",
+    "spurious_copper"
+  ]
+}

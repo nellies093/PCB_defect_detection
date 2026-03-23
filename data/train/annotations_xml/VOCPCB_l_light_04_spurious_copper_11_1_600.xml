@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<annotation><folder>images</folder><filename>VOCPCB_l_light_04_spurious_copper_11_1_600.jpg</filename><size><width>600</width><height>600</height><depth>3</depth></size><segmented>0</segmented><object><name>spurious_copper</name><pose>Unspecified</pose><truncated>0</truncated><difficult>0</difficult><bndbox><xmin>475</xmin><ymin>371</ymin><xmax>488</xmax><ymax>411</ymax></bndbox></object></annotation>
