@@ -94,21 +94,23 @@ def install_dependencies(scripts_dir: Path, with_mmdet: bool) -> None:
 
 
 def train_yolo(paths: Paths, epochs: int, imgsz: int, batch: int, device: str, workers: int) -> None:
+    # Build device argument: comma-separated becomes list notation for YOLO multi-GPU
+    device_arg = f"[{device}]" if "," in device else device
     cmd = [
-    'yolo',
-    'train',
-    'model=yolo11s.pt',
-    'data=/kaggle/working/project/pcb-defect-dataset/scripts/yolo_data.yaml',
-    'epochs=30',
-    'imgsz=640',
-    'batch=32',
-    'device=[0,1]',
-    'workers=8',
-    'project=/kaggle/working/runs',
-    'name=yolo11s',
-    'exist_ok=True',
-    'plots=True',
-    'amp=True'
+        "yolo",
+        "train",
+        "model=yolo11s.pt",
+        f"data={paths.yolo_yaml.as_posix()}",
+        f"epochs={epochs}",
+        f"imgsz={imgsz}",
+        f"batch={batch}",
+        f"device={device_arg}",
+        f"workers={workers}",
+        f"project={paths.out_dir.as_posix()}",
+        "name=yolo11s",
+        "exist_ok=True",
+        "plots=True",
+        "amp=True",
     ]
     run_cmd(cmd, cwd=paths.repo_root)
 
@@ -125,19 +127,41 @@ def train_mmdet(paths: Paths, model_name: str, epochs: int, gpus: int) -> None:
     work_dir = paths.out_dir / model_name
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    launcher = [
-        "mim",
-        "train",
-        "mmdet",
-        str(cfg),
-        "--gpus",
-        str(gpus),
-        "--work-dir",
-        str(work_dir),
-        "--cfg-options",
+    # Pass absolute data_root so the config works regardless of cwd.
+    # Trailing slash is required by MMDetection's CocoDataset path joining.
+    data_root_posix = paths.data_root.as_posix().rstrip("/") + "/"
+    cfg_options = [
+        f"train_dataloader.dataset.data_root={data_root_posix}",
+        f"val_dataloader.dataset.data_root={data_root_posix}",
+        f"test_dataloader.dataset.data_root={data_root_posix}",
+        f"val_evaluator.ann_file={data_root_posix}annotations_json/val.json",
+        f"test_evaluator.ann_file={data_root_posix}annotations_json/test.json",
         f"train_cfg.max_epochs={epochs}",
         f"default_hooks.checkpoint.interval={max(1, min(5, epochs))}",
     ]
+
+    if gpus > 1:
+        # MMDetection 3.x dropped the legacy --gpus flag; distributed training
+        # requires PyTorch DDP launched via torchrun with --launcher pytorch.
+        launcher = [
+            sys.executable, "-m", "torch.distributed.run",
+            "--nproc_per_node", str(gpus),
+            "-m", "mmdet.tools.train",
+            str(cfg),
+            "--work-dir", str(work_dir),
+            "--launcher", "pytorch",
+            "--cfg-options",
+        ] + cfg_options
+    else:
+        launcher = [
+            "mim",
+            "train",
+            "mmdet",
+            str(cfg),
+            "--work-dir",
+            str(work_dir),
+            "--cfg-options",
+        ] + cfg_options
     run_cmd(launcher, cwd=paths.repo_root)
 
 
