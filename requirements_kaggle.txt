@@ -1,0 +1,22 @@
+# Core
+numpy>=1.26.0
+pandas>=2.2.0
+pyyaml>=6.0.1
+tqdm>=4.66.0
+
+# PyTorch stack (Kaggle GPU images already include torch, keep for reproducibility)
+torch>=2.4.0
+torchvision>=0.19.0
+
+# Detection / training
+ultralytics>=8.3.0
+pycocotools>=2.0.8
+transformers>=4.46.0
+accelerate>=1.0.0
+torchmetrics>=1.4.0
+
+# MMDetection ecosystem
+openmim>=0.3.9
+mmengine>=0.10.5
+mmdet>=3.3.0
+mmcv>=2.1.0,<2.2.0

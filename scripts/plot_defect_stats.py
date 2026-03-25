@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import DefaultDict, Dict, List, Sequence, Set, Tuple
 
 import matplotlib.pyplot as plt
+from PIL import Image
 
 
 def read_class_names(classes_file: Path) -> List[str]:
@@ -32,7 +33,9 @@ def collect_stats(
 	split_bbox_counts: Dict[str, int] = {"train": 0, "val": 0, "test": 0}
 
 	for split in ("train", "val", "test"):
-		labels_dir = dataset_root / split / "labels_txt"
+		labels_dir = dataset_root / split / "labels"
+		if not labels_dir.exists():
+			labels_dir = dataset_root / split / "labels_txt"
 		if not labels_dir.exists():
 			continue
 
@@ -67,6 +70,29 @@ def collect_stats(
 	)
 
 
+def collect_image_size_counts(dataset_root: Path) -> Dict[str, int]:
+	image_suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+	size_counts: Dict[str, int] = defaultdict(int)
+
+	for split in ("train", "val", "test"):
+		images_dir = dataset_root / split / "images"
+		if not images_dir.exists():
+			continue
+
+		for image_path in images_dir.iterdir():
+			if not image_path.is_file() or image_path.suffix.lower() not in image_suffixes:
+				continue
+
+			try:
+				with Image.open(image_path) as img:
+					w, h = img.size
+					size_counts[f"{w}x{h}"] += 1
+			except Exception:
+				continue
+
+	return dict(size_counts)
+
+
 def count_images_in_split(dataset_root: Path, split: str) -> int:
 	images_dir = dataset_root / split / "images"
 	if not images_dir.exists():
@@ -86,6 +112,31 @@ def plot_image_count_bar(class_names: Sequence[str], image_counts: Sequence[int]
 	ax.tick_params(axis="x", rotation=25)
 
 	for bar, value in zip(bars, image_counts):
+		ax.text(bar.get_x() + bar.get_width() / 2, value, str(value), ha="center", va="bottom", fontsize=8)
+
+	fig.tight_layout()
+	fig.savefig(out_path, dpi=200)
+	plt.close(fig)
+
+
+def plot_image_size_count_bar(size_counts: Dict[str, int], out_path: Path, top_k: int = 20) -> None:
+	if not size_counts:
+		return
+
+	sorted_sizes = sorted(size_counts.items(), key=lambda x: x[1], reverse=True)
+	show_sizes = sorted_sizes[:top_k]
+	labels = [x[0] for x in show_sizes]
+	counts = [x[1] for x in show_sizes]
+
+	fig, ax = plt.subplots(figsize=(max(10, len(labels) * 0.7), 6))
+	bars = ax.bar(labels, counts)
+
+	ax.set_title("So luong anh theo kich thuoc (W x H)")
+	ax.set_xlabel("Kich thuoc anh")
+	ax.set_ylabel("So anh")
+	ax.tick_params(axis="x", rotation=40)
+
+	for bar, value in zip(bars, counts):
 		ax.text(bar.get_x() + bar.get_width() / 2, value, str(value), ha="center", va="bottom", fontsize=8)
 
 	fig.tight_layout()
@@ -274,12 +325,16 @@ def main() -> None:
 	)
 	args = parser.parse_args()
 
-	dataset_root = args.dataset_root.resolve()
-	out_dir = args.out_dir.resolve() if args.out_dir else dataset_root / "plots"
-	info_out_path = args.info_out.resolve() if args.info_out else dataset_root / "dataset_info.json"
+	raw_root = args.dataset_root.resolve()
+	dataset_root = (raw_root / "data") if (raw_root / "data").exists() else raw_root
+	out_dir = args.out_dir.resolve() if args.out_dir else raw_root / "plots"
+	info_out_path = args.info_out.resolve() if args.info_out else raw_root / "dataset_info.json"
 	out_dir.mkdir(parents=True, exist_ok=True)
 
-	class_names = read_class_names(dataset_root / "classes.txt")
+	classes_file = dataset_root / "classes.txt"
+	if not classes_file.exists() and (raw_root / "classes.txt").exists():
+		classes_file = raw_root / "classes.txt"
+	class_names = read_class_names(classes_file)
 	(
 		image_counts,
 		bbox_points_by_class,
@@ -287,13 +342,16 @@ def main() -> None:
 		split_label_file_counts,
 		split_bbox_counts,
 	) = collect_stats(dataset_root, class_names)
+	image_size_counts = collect_image_size_counts(dataset_root)
 
 	bar_path = out_dir / "defect_image_count_bar.png"
+	image_size_bar_path = out_dir / "image_size_count_bar.png"
 	scatter_class_path = out_dir / "bbox_size_scatter_by_class.png"
 	scatter_split_path = out_dir / "bbox_size_scatter_by_split.png"
 	hexbin_overall_path = out_dir / "bbox_hexbin_overall.png"
 
 	plot_image_count_bar(class_names, image_counts, bar_path)
+	plot_image_size_count_bar(image_size_counts, image_size_bar_path)
 	plot_bbox_scatter(class_names, bbox_points_by_class, scatter_class_path)
 	plot_bbox_scatter_by_split(split_bbox_points, scatter_split_path)
 	plot_bbox_hexbin_overall(split_bbox_points, hexbin_overall_path)
@@ -309,6 +367,7 @@ def main() -> None:
 	)
 
 	print(f"Saved: {bar_path}")
+	print(f"Saved: {image_size_bar_path}")
 	print(f"Saved: {scatter_class_path}")
 	print(f"Saved: {scatter_split_path}")
 	print(f"Saved: {hexbin_overall_path}")

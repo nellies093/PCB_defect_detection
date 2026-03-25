@@ -1,5 +1,19 @@
-ultralytics>=8.3.0
-openmim>=0.3.9
-mmdet>=3.3.0
-mmengine>=0.10.0
-mmcv>=2.2.0
+# ===== Core (fix conflict) =====
+requests==2.32.4
+tqdm==4.67.3
+urllib3==2.2.1
+rich==13.7.1
+filelock==3.25.2
+pandas==2.2.2
+
+# ===== YOLO =====
+ultralytics
+
+# ===== MMDetection =====
+mmengine==0.10.4
+mmcv==2.1.0
+mmdet==3.3.0
+
+# ===== ML =====
+scikit-learn
+matplotlib
