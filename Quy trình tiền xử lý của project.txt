@@ -1,0 +1,87 @@
+Quy trình tiền xử lý và gộp dataset của project:
+
+1) Chuẩn hóa nhãn đích về 6 lớp thống nhất:
+- mouse_bite
+- open_circuit
+- mising_hole
+- short
+- spur
+- spurious_copper
+
+2) Gộp nhãn DsPCBDS+ (9 label) về 6 label:
+- SH -> short
+- SP -> spur
+- SC -> spurious_copper
+- OP -> open_circuit
+- MB -> mouse_bite
+- HB -> mising_hole
+- CS, CFO, BMFO: hiện chưa map sang 6 lớp đích trong pipeline hiện tại, nên bị loại khỏi tập hợp nhất.
+
+3) Với 2 dataset còn lại vốn đã có 6 lớp:
+- Không gộp lớp mới theo nghĩa many-to-one.
+- Chỉ chuẩn hóa alias tên lớp để cùng chuẩn 6 lớp đích:
+	open/open-circuit -> open_circuit
+	mousebite -> mouse_bite
+	pin-hole/missing_hole -> mising_hole
+	spurious/spurious-copper -> spurious_copper
+
+4) Xử lý kích thước ảnh khi gộp:
+- Ở bước build unified dataset: giữ nguyên kích thước ảnh gốc, chỉ clamp bbox cho hợp lệ.
+- Ở bước preprocess sau gộp: letterbox về target_size (mặc định 640x640), remap bbox theo scale + padding.
+
+5) Làm sạch nhãn/bbox:
+- Loại dòng label sai format.
+- Loại class id không hợp lệ.
+- Loại bbox âm/0 diện tích.
+- Loại bbox quá nhỏ theo ngưỡng min_bbox_wh_norm.
+
+6) Chia tập dữ liệu:
+- Split train/val/test theo 80/10/10 (seed cố định, mặc định 42).
+
+7) Augmentation sau gộp (train):
+- flip ngang/dọc (theo config), rotate nhẹ, brightness/contrast, gamma, noise.
+- Có cơ chế tăng cường mẫu cho lớp hiếm theo rare_ratio.
+
+8) Script plot trước khi gộp (theo từng source dataset):
+- File: unified_pipeline/plot_premerge_dataset_stats.py
+- Chức năng:
+	+ Bar: số ảnh theo class của từng nguồn.
+	+ Scatter: phân bố width-height bbox (pixel) của từng nguồn.
+	+ Bar: phân bố kích thước ảnh (top 15) của từng nguồn.
+	+ JSON summary: số ảnh, số bbox, avg boxes/image, thống kê bbox, top size.
+
+9) Script plot sau khi gộp trên dataset hoàn chỉnh:
+- File: unified_pipeline/plot_dataset_stats.py
+- Chức năng:
+	+ Bar số mẫu theo defect class.
+	+ Scatter kích thước bbox.
+
+10) Model được sử dụng:
+- Nhánh YOLO: yolo11m (có thể đổi yolo11s/yolo11n).
+- Nhánh MMDetection:
+	+ retinanet
+	+ faster_rcnn
+	+ cascade_rcnn
+	+ detr
+	+ deformable_detr
+
+11) Config model/augmentation:
+- YOLO augmentation: unified_pipeline/configs/yolo_augmentation.yaml
+- MMDetection augmentation: unified_pipeline/configs/mmdet_augmentation.py
+- MMDet base configs chọn theo model trong train_mmdet.py:
+	retinanet_r50_fpn_1x_coco
+	faster-rcnn_r50_fpn_1x_coco
+	cascade-rcnn_r50_fpn_1x_coco
+	detr_r50_8xb2-150e_coco
+	deformable-detr_r50_16xb2-50e_coco
+
+12) Plot performance khi train/val model:
+- File mới: unified_pipeline/plot_model_performance.py
+- Plot được tạo:
+	+ bar_accuracy (mAP50 proxy)
+	+ bar_f1
+	+ bar_map50
+	+ bar_map50_95
+	+ scatter_precision_recall
+	+ curve_yolo_losses (nếu cung cấp yolo results.csv)
+	+ confusion_matrix_yolo (nếu cung cấp confusion_matrix.png)

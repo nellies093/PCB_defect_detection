@@ -1,4 +1,4 @@
-path: data
+path: D:/CS/DeepLearning/midterm/PCB_defect_detection/data
 train: train/images
 val: val/images
 test: test/images

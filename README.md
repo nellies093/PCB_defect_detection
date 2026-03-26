@@ -2,6 +2,30 @@
 
 Utility scripts and configs to train multiple defect detection models (YOLO, MMDetection, TorchVision, Transformers) on a 6-class PCB dataset.
 
+## Local Training Quickstart (Windows/Linux)
+
+The repository already contains local YOLO labels under `data/<split>/labels/` and images under `data/<split>/images/`.
+
+1. Install dependencies in your environment:
+
+```bash
+pip install -r requiment.txt
+```
+
+2. Run local training script from repo root:
+
+```bash
+python scripts/train_local.py --model yolo11s.pt --epochs 100 --batch 16
+```
+
+Useful options:
+- `--device auto` (default): use GPU if available, else CPU.
+- `--device cpu`: force CPU training.
+- `--model yolo11n.pt`: use a lighter model if VRAM is limited.
+- `--project runs/train_local --name exp1`: customize output folder.
+
+Outputs are saved to `runs/train_local/<name>/`.
+
 ## Kaggle Training Quickstart
 
 ### Option A – Kaggle Notebook (recommended)
@@ -22,8 +46,9 @@ Assumptions:
 # Repository is at /kaggle/working/project
 cd /kaggle/working/project
 
-# (Optional) install training dependencies
-python scripts/train_kaggle.py --install-deps --dry-run
+# Create isolated venv and install dependencies in that venv
+python scripts/setup_kaggle_venv.py --register-kernel
+source /kaggle/working/venvs/pcb_env/bin/activate
 
 # Train all models on 2× T4 GPUs
 python scripts/train_kaggle.py \
@@ -44,3 +69,5 @@ Notes:
 - Train only one model, for example:
   - `python scripts/train_kaggle.py --models yolo11s`
   - `python scripts/train_kaggle.py --models detr --gpus 2`
+
+

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -35,6 +38,169 @@ class Paths:
 def run_cmd(cmd: list[str], cwd: Path | None = None) -> None:
     print(f"\n[CMD] {' '.join(cmd)}")
     subprocess.run(cmd, check=True, cwd=str(cwd) if cwd else None)
+
+
+def now_tag() -> str:
+    return time.strftime("%Y%m%d_%H%M%S")
+
+
+def is_kaggle_runtime() -> bool:
+    return Path("/kaggle").exists() or bool(os.environ.get("KAGGLE_KERNEL_RUN_TYPE"))
+
+
+def print_runtime_summary(project_dir: Path, checkpoint_root: Path) -> None:
+    print("[INFO] Runtime summary")
+    print(f"  python:          {sys.version.split()[0]}")
+    print(f"  kaggle_runtime:  {is_kaggle_runtime()}")
+    print(f"  project_dir:     {project_dir}")
+    print(f"  checkpoint_root: {checkpoint_root}")
+    if project_dir.exists():
+        usage = shutil.disk_usage(project_dir)
+        free_gb = usage.free / (1024 ** 3)
+        print(f"  free_disk_gb:    {free_gb:.2f}")
+
+
+def cleanup_before_train(paths: Paths, models: list[str], checkpoint_root: Path) -> None:
+    print("[INFO] Cleanup before training...")
+    removed_files = 0
+    removed_dirs = 0
+
+    targets = [
+        paths.out_dir,
+        paths.repo_root / "plots",
+        paths.repo_root / "reports",
+    ]
+
+    for base in targets:
+        if not base.exists():
+            continue
+
+        for pyc in base.rglob("*.pyc"):
+            try:
+                pyc.unlink()
+                removed_files += 1
+            except OSError:
+                pass
+
+        for pyo in base.rglob("*.pyo"):
+            try:
+                pyo.unlink()
+                removed_files += 1
+            except OSError:
+                pass
+
+        for tmp in base.rglob("*.tmp"):
+            try:
+                tmp.unlink()
+                removed_files += 1
+            except OSError:
+                pass
+
+        for d in sorted(base.rglob("__pycache__"), reverse=True):
+            try:
+                shutil.rmtree(d, ignore_errors=True)
+                removed_dirs += 1
+            except OSError:
+                pass
+
+        for d in sorted(base.rglob(".ipynb_checkpoints"), reverse=True):
+            try:
+                shutil.rmtree(d, ignore_errors=True)
+                removed_dirs += 1
+            except OSError:
+                pass
+
+    # Remove stale artifacts from previous runs for selected models.
+    for model_name in models:
+        for stale in paths.out_dir.glob(f"{model_name}*"):
+            if stale.is_dir():
+                shutil.rmtree(stale, ignore_errors=True)
+                removed_dirs += 1
+
+    stale_saved = paths.out_dir / "saved_models"
+    if stale_saved.exists():
+        shutil.rmtree(stale_saved, ignore_errors=True)
+        removed_dirs += 1
+
+    for scope in ("hourly", "final"):
+        scope_dir = checkpoint_root / scope
+        for model_name in models:
+            stale_scope = scope_dir / model_name
+            if stale_scope.exists():
+                shutil.rmtree(stale_scope, ignore_errors=True)
+                removed_dirs += 1
+
+    print(f"[INFO] Cleanup completed: removed_files={removed_files}, removed_dirs={removed_dirs}")
+
+
+def resolve_model_output_dir(paths: Paths, model_name: str) -> Path | None:
+    direct = paths.out_dir / model_name
+    if direct.exists() and direct.is_dir():
+        return direct
+
+    candidates = [p for p in paths.out_dir.glob(f"{model_name}*") if p.is_dir()]
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
+def snapshot_model_artifacts(paths: Paths, model_name: str, dest_root: Path, reason: str) -> Path | None:
+    src_dir = resolve_model_output_dir(paths, model_name)
+    if src_dir is None:
+        print(f"[WARN] No output directory found for model '{model_name}' to snapshot ({reason}).")
+        return None
+
+    dest_dir = dest_root / model_name
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src_dir, dest_dir, dirs_exist_ok=True)
+
+    manifest = {
+        "model": model_name,
+        "reason": reason,
+        "timestamp": now_tag(),
+        "source_dir": str(src_dir),
+        "snapshot_dir": str(dest_dir),
+    }
+    (dest_dir / "snapshot_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print(f"[INFO] Snapshot saved ({reason}): {dest_dir}")
+    return dest_dir
+
+
+def save_completed_model(paths: Paths, model_name: str, saved_models_root: Path) -> Path | None:
+    src_dir = resolve_model_output_dir(paths, model_name)
+    if src_dir is None:
+        print(f"[WARN] Cannot save completed model '{model_name}': output directory not found.")
+        return None
+
+    saved_models_root.mkdir(parents=True, exist_ok=True)
+    dest_dir = saved_models_root / f"{model_name}_{now_tag()}"
+    shutil.copytree(src_dir, dest_dir, dirs_exist_ok=True)
+    print(f"[INFO] Model artifacts stored: {dest_dir}")
+    return dest_dir
+
+
+def periodic_checkpoint_worker(
+    stop_event: threading.Event,
+    paths: Paths,
+    model_name: str,
+    checkpoint_root: Path,
+    interval_seconds: int,
+) -> None:
+    if interval_seconds <= 0:
+        return
+
+    while not stop_event.wait(timeout=interval_seconds):
+        try:
+            snapshot_model_artifacts(
+                paths=paths,
+                model_name=model_name,
+                dest_root=checkpoint_root / "hourly",
+                reason="hourly",
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WARN] Hourly checkpoint failed for {model_name}: {exc}")
 
 
 def detect_data_root(repo_root: Path, data_source: Path | None) -> Path:
@@ -193,6 +359,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--gpus", type=int, default=2)
     parser.add_argument("--yolo-device", type=str, default="0,1")
+    parser.add_argument("--checkpoint-root", type=Path, default=Path("/kaggle/working/checkpoints"))
+    parser.add_argument("--checkpoint-every-minutes", type=int, default=60)
+    parser.add_argument("--no-cleanup-before-train", action="store_true")
     parser.add_argument("--install-deps", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -230,6 +399,13 @@ def main() -> None:
     )
     paths.out_dir.mkdir(parents=True, exist_ok=True)
 
+    checkpoint_root = args.checkpoint_root.resolve()
+    checkpoint_root.mkdir(parents=True, exist_ok=True)
+    print_runtime_summary(project_dir=paths.out_dir, checkpoint_root=checkpoint_root)
+
+    if not args.no_cleanup_before_train:
+        cleanup_before_train(paths=paths, models=models, checkpoint_root=checkpoint_root)
+
     if args.install_deps:
         install_dependencies(scripts_dir=scripts_dir, with_mmdet=any(m in MMDET_MODELS for m in models))
 
@@ -237,24 +413,48 @@ def main() -> None:
     print(f"  repo_root: {paths.repo_root}")
     print(f"  data_root: {paths.data_root}")
     print(f"  project:   {paths.out_dir}")
+    print(f"  ckpt_root: {checkpoint_root}")
     print(f"  models:    {models}")
 
     if args.dry_run:
         return
 
+    checkpoint_interval_seconds = max(1, args.checkpoint_every_minutes) * 60
+    saved_models_root = paths.out_dir / "saved_models"
+
     for model_name in models:
         print(f"\n[INFO] Start model: {model_name}")
-        if model_name == "yolo11s":
-            train_yolo(
+        stop_event = threading.Event()
+        checkpoint_thread = threading.Thread(
+            target=periodic_checkpoint_worker,
+            args=(stop_event, paths, model_name, checkpoint_root, checkpoint_interval_seconds),
+            daemon=True,
+        )
+        checkpoint_thread.start()
+
+        try:
+            if model_name == "yolo11s":
+                train_yolo(
+                    paths=paths,
+                    epochs=args.epochs,
+                    imgsz=args.imgsz,
+                    batch=args.batch,
+                    device=args.yolo_device,
+                    workers=args.workers,
+                )
+            else:
+                train_mmdet(paths=paths, model_name=model_name, epochs=args.epochs, gpus=args.gpus)
+
+            snapshot_model_artifacts(
                 paths=paths,
-                epochs=args.epochs,
-                imgsz=args.imgsz,
-                batch=args.batch,
-                device=args.yolo_device,
-                workers=args.workers,
+                model_name=model_name,
+                dest_root=checkpoint_root / "final",
+                reason="model_completed",
             )
-        else:
-            train_mmdet(paths=paths, model_name=model_name, epochs=args.epochs, gpus=args.gpus)
+            save_completed_model(paths=paths, model_name=model_name, saved_models_root=saved_models_root)
+        finally:
+            stop_event.set()
+            checkpoint_thread.join(timeout=5)
 
 
 if __name__ == "__main__":
