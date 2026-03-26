@@ -1,19 +1,26 @@
-# ===== Core (fix conflict) =====
-requests==2.32.4
-tqdm==4.67.3
-urllib3==2.2.1
-rich==13.7.1
-filelock==3.25.2
-pandas==2.2.2
+# Core / compatibility pins (Kaggle conflict-prone)
+numpy>=1.26.0
+pandas>=2.2.0
+pyyaml>=6.0.1
+psutil>=5.9.0
+requests>=2.32.4,<3
+urllib3>=2,<3
+tqdm>=4.67,<5
+rich>=13.7.1
+filelock>=3.15
+fsspec==2025.3.0
 
-# ===== YOLO =====
-ultralytics
+# Training stack
+ultralytics>=8.3.0
+torch>=2.4.0
+torchvision>=0.19.0
+pycocotools>=2.0.8
+transformers>=4.46.0
+torchmetrics>=1.4.0
+accelerate>=1.0.0
 
-# ===== MMDetection =====
-mmengine==0.10.4
-mmcv==2.1.0
-mmdet==3.3.0
-
-# ===== ML =====
-scikit-learn
-matplotlib
+# MMDetection ecosystem
+mmengine>=0.10.5
+mmdet>=3.3.0
+openmim>=0.3.9
+mmcv>=2.1.0,<2.2.0
