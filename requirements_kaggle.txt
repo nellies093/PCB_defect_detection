@@ -2,7 +2,13 @@
 numpy>=1.26.0
 pandas>=2.2.0
 pyyaml>=6.0.1
-tqdm>=4.66.0
+psutil>=5.9.0
+requests>=2.32.4,<3
+urllib3>=2,<3
+tqdm>=4.67,<5
+rich>=13.7.1
+filelock>=3.15
+fsspec==2025.3.0
 
 # PyTorch stack (Kaggle GPU images already include torch, keep for reproducibility)
 torch>=2.4.0
@@ -20,3 +26,11 @@ openmim>=0.3.9
 mmengine>=0.10.5
 mmdet>=3.3.0
 mmcv>=2.1.0,<2.2.0
+
+# These common packages ship with outdated versions on Kaggle GPU images.
+# Pin them here so pip upgrades them, preventing dependency-resolver conflicts
+# raised by ultralytics/transformers/accelerate and their transitive deps.
+requests>=2.32.4
+urllib3>=2.6.3
+filelock>=3.15.0
+rich>=13.7.1

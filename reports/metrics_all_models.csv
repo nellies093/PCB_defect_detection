@@ -1,0 +1,1 @@
+branch,model,accuracy,precision,recall,f1,model_size_mb,trainable_params,fps,inference_time_ms,train_time_sec,train_samples,train_samples_per_sec,sec_per_epoch,map50,map50_95,box_loss,cls_loss,dfl_loss,notes

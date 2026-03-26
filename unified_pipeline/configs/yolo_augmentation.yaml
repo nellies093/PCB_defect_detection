@@ -1,0 +1,25 @@
+# Augmentation preset for Ultralytics YOLO on PCB defect dataset
+# Values are intentionally moderate to preserve fine defect patterns.
+
+hsv_h: 0.008
+hsv_s: 0.35
+hsv_v: 0.22
+
+degrees: 8.0
+translate: 0.06
+scale: 0.20
+shear: 1.5
+perspective: 0.0005
+
+flipud: 0.5
+fliplr: 0.5
+
+mosaic: 0.25
+mixup: 0.05
+copy_paste: 0.10
+
+erasing: 0.15
+crop_fraction: 1.0
+
+# Keep these at 0 to avoid heavy geometry distortion for PCB micro-defects.
+auto_augment: null

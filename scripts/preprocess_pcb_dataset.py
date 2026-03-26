@@ -374,9 +374,47 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--rare-ratio", type=float, default=0.60)
 	parser.add_argument("--max-aug-per-image", type=int, default=1)
 	parser.add_argument("--max-images-per-split", type=int, default=0)
+	parser.add_argument("--no-clean-output", action="store_true")
 	parser.add_argument("--seed", type=int, default=42)
 	parser.add_argument("--dry-run", action="store_true")
 	return parser.parse_args()
+
+
+def safe_clean_output_root(output_root: Path, dataset_root: Path, dry_run: bool, stats: Dict[str, int]) -> None:
+	"""
+	Remove only artifacts produced by this pipeline to avoid deleting unrelated data.
+	"""
+	output_root = output_root.resolve()
+	dataset_root = dataset_root.resolve()
+	if output_root == dataset_root:
+		raise ValueError(
+			f"Refusing to clean output_root because it equals dataset_root: {output_root}. "
+			"Please choose a dedicated output directory."
+		)
+	if len(output_root.parts) <= 1:
+		raise ValueError(f"Refusing to clean suspicious output_root: {output_root}")
+
+	generated_paths = [
+		output_root / "classes.txt",
+		output_root / "yolo_data.yaml",
+		output_root / "preprocess_report.json",
+	]
+	for split in ("train", "val", "test"):
+		generated_paths.append(output_root / split / "images")
+		generated_paths.append(output_root / split / "labels_txt")
+
+	for target in generated_paths:
+		if not target.exists():
+			continue
+		if dry_run:
+			stats["dry_run_paths_would_clean"] += 1
+			continue
+		if target.is_dir():
+			shutil.rmtree(target)
+			stats["cleaned_dirs"] += 1
+		else:
+			target.unlink()
+			stats["cleaned_files"] += 1
 
 
 def main() -> None:
@@ -392,6 +430,8 @@ def main() -> None:
 	class_count = len(classes)
 
 	stats: DefaultDict[str, int] = defaultdict(int)
+	if not args.no_clean_output:
+		safe_clean_output_root(output_root, dataset_root, args.dry_run, stats)
 	if not args.dry_run:
 		output_root.mkdir(parents=True, exist_ok=True)
 
@@ -439,8 +479,14 @@ def main() -> None:
 
 			out_img_path = out_images / f"{image_path.stem}.jpg"
 			out_lbl_path = out_labels / f"{image_path.stem}.txt"
+			image_written = True
 			if not args.dry_run:
-				cv2.imwrite(str(out_img_path), letterboxed)
+				image_written = cv2.imwrite(str(out_img_path), letterboxed)
+				if not image_written:
+					stats["image_write_failures"] += 1
+			if not image_written:
+				stats["labels_skipped_due_to_image_write_failure"] += 1
+				continue
 			save_yolo_label_file(out_lbl_path, remapped_boxes, dry_run=args.dry_run)
 			stats["images_written"] += 1
 			stats["labels_written"] += 1
@@ -453,22 +499,35 @@ def main() -> None:
 			train_class_counts = count_class_image_occurrence(train_labels_dir, class_count)
 			max_count = max(train_class_counts) if train_class_counts else 0
 			rare_threshold = int(max_count * config.rare_ratio)
-			rare_classes = {idx for idx, value in enumerate(train_class_counts) if value < rare_threshold}
+			class_counts = list(train_class_counts)
+			candidate_infos = [
+				(label_path, classes_in_label_file(label_path)) for label_path in sorted(train_labels_dir.glob("*.txt"))
+			]
+			aug_usage_per_image: Dict[str, int] = defaultdict(int)
+			aug_index_by_stem: Dict[str, int] = defaultdict(int)
 
-			for label_path in sorted(train_labels_dir.glob("*.txt")):
+			while True:
+				rare_classes = {idx for idx, value in enumerate(class_counts) if value < rare_threshold}
 				if not rare_classes:
 					break
-				present = classes_in_label_file(label_path)
-				if not (present & rare_classes):
-					continue
 
-				image_path = train_images_dir / f"{label_path.stem}.jpg"
-				image = cv2.imread(str(image_path))
-				if image is None:
-					continue
+				progress = False
+				for label_path, present in candidate_infos:
+					if not (present & rare_classes):
+						continue
+					if aug_usage_per_image[label_path.stem] >= config.max_aug_per_image:
+						continue
 
-				boxes = parse_yolo_label_file(label_path, class_count, stats)
-				for aug_index in range(config.max_aug_per_image):
+					image_path = train_images_dir / f"{label_path.stem}.jpg"
+					image = cv2.imread(str(image_path))
+					if image is None:
+						stats["augment_source_unreadable"] += 1
+						continue
+
+					boxes = parse_yolo_label_file(label_path, class_count, stats)
+					if not boxes:
+						continue
+
 					aug_img, aug_boxes = apply_train_augmentation(image, boxes, config, rng)
 					aug_boxes = sanitize_boxes(
 						aug_boxes,
@@ -480,14 +539,29 @@ def main() -> None:
 					if not aug_boxes:
 						continue
 
-					aug_name = f"{label_path.stem}_aug{aug_index + 1}"
+					aug_usage_per_image[label_path.stem] += 1
+					aug_index_by_stem[label_path.stem] += 1
+					aug_name = f"{label_path.stem}_aug{aug_index_by_stem[label_path.stem]}"
 					aug_img_path = train_images_dir / f"{aug_name}.jpg"
 					aug_lbl_path = train_labels_dir / f"{aug_name}.txt"
-					if not args.dry_run:
-						cv2.imwrite(str(aug_img_path), aug_img)
+
+					image_written = cv2.imwrite(str(aug_img_path), aug_img)
+					if not image_written:
+						stats["augmented_image_write_failures"] += 1
+						continue
+
 					save_yolo_label_file(aug_lbl_path, aug_boxes, dry_run=args.dry_run)
 					stats["augmented_images_written"] += 1
 					stats["augmented_bboxes_written"] += len(aug_boxes)
+
+					present_aug_classes = {cid for cid, *_ in aug_boxes}
+					for class_id in present_aug_classes:
+						class_counts[class_id] += 1
+					progress = True
+
+				if not progress:
+					stats["dynamic_balance_stopped_no_progress"] += 1
+					break
 
 	if not args.dry_run:
 		shutil.copy2(dataset_root / "classes.txt", output_root / "classes.txt")
@@ -520,6 +594,7 @@ def main() -> None:
 			"rare_ratio": args.rare_ratio,
 			"max_aug_per_image": args.max_aug_per_image,
 			"max_images_per_split": args.max_images_per_split,
+			"no_clean_output": args.no_clean_output,
 			"seed": args.seed,
 			"dry_run": args.dry_run,
 		},

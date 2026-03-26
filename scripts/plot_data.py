@@ -17,6 +17,23 @@ def read_class_names(classes_file: Path) -> List[str]:
     return [line.strip() for line in classes_file.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def resolve_data_root(dataset_root: Path) -> Path:
+    data_root = dataset_root / "data"
+    if data_root.exists():
+        return data_root
+    return dataset_root
+
+
+def find_labels_dir(split_dir: Path) -> Path | None:
+    labels_dir = split_dir / "labels"
+    if labels_dir.exists():
+        return labels_dir
+    labels_txt_dir = split_dir / "labels_txt"
+    if labels_txt_dir.exists():
+        return labels_txt_dir
+    return None
+
+
 def collect_stats(
     dataset_root: Path, class_names: Sequence[str]
 ) -> Tuple[
@@ -32,9 +49,12 @@ def collect_stats(
     split_label_file_counts: Dict[str, int] = {"train": 0, "val": 0, "test": 0}
     split_bbox_counts: Dict[str, int] = {"train": 0, "val": 0, "test": 0}
 
+    data_root = resolve_data_root(dataset_root)
+
     for split in ("train", "val", "test"):
-        labels_dir = dataset_root / split / "labels_txt"
-        if not labels_dir.exists():
+        split_dir = data_root / split
+        labels_dir = find_labels_dir(split_dir)
+        if labels_dir is None:
             continue
 
         for label_path in labels_dir.glob("*.txt"):
@@ -69,7 +89,8 @@ def collect_stats(
 
 
 def count_images_in_split(dataset_root: Path, split: str) -> int:
-    images_dir = dataset_root / split / "images"
+    data_root = resolve_data_root(dataset_root)
+    images_dir = data_root / split / "images"
     if not images_dir.exists():
         return 0
 
@@ -118,7 +139,9 @@ def plot_bbox_scatter(
     ax.set_xlim(0.0, 0.5)
     ax.set_ylim(0.0, 0.5)
     ax.grid(alpha=0.25)
-    ax.legend(loc="upper right", fontsize=8)
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(loc="upper right", fontsize=8)
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=200)
@@ -149,7 +172,9 @@ def plot_bbox_scatter_by_split(split_bbox_points: Dict[str, List[Tuple[float, fl
     ax.set_xlim(0.0, 0.5)
     ax.set_ylim(0.0, 0.5)
     ax.grid(alpha=0.25)
-    ax.legend(loc="upper right", fontsize=9)
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(loc="upper right", fontsize=9)
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=200)
@@ -351,7 +376,8 @@ def main() -> None:
         args = parser.parse_args()
 
     dataset_root = args.dataset_root.resolve()
-    out_dir = args.out_dir.resolve() if args.out_dir else dataset_root / "plots"
+    repo_root = Path(__file__).resolve().parents[1]
+    out_dir = args.out_dir.resolve() if args.out_dir else repo_root / "plots"
     info_out_path = args.info_out.resolve() if args.info_out else dataset_root / "dataset_info.json"
     out_dir.mkdir(parents=True, exist_ok=True)
 
