@@ -148,11 +148,12 @@ def train_yolo(
         "amp=True",
     ]
     if dtr:
-        # Ultralytics exposes gradient checkpointing via the 'close_mosaic' env
-        # variable is unrelated; we enable it via an env flag checked on import.
+        # Ultralytics does not expose a public CLI flag for gradient
+        # checkpointing.  We set a best-effort environment variable and rely on
+        # the allocator-level DTR applied by dtr_context() around the outer
+        # training loop to reduce peak GPU memory for YOLO.
         cmd.append("save_period=5")
-        os.environ.setdefault("ULTRALYTICS_GRADIENT_CHECKPOINTING", "1")
-        print("[DTR] gradient checkpointing flag set for YOLO via env")
+        print("[DTR] dtr_context() will manage GPU allocator for YOLO")
     run_cmd(cmd, cwd=paths.repo_root)
 
 

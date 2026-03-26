@@ -42,6 +42,9 @@ def _wrap_forward_with_checkpoint(module: nn.Module) -> nn.Module:
 
     def checkpointed_forward(*args, **kwargs):
         # use_reentrant=False is the modern, stable API (PyTorch >= 1.13).
+        # Strip 'use_reentrant' from kwargs so it does not conflict with the
+        # explicit keyword we pass to cp.checkpoint below.
+        kwargs.pop("use_reentrant", None)
         return cp.checkpoint(original_forward, *args, use_reentrant=False, **kwargs)
 
     module.forward = checkpointed_forward  # type: ignore[method-assign]
@@ -91,7 +94,7 @@ def apply_dtr(
         else:
             # Fallback: wrap every named child block that carries parameters.
             for name, module in list(model.named_children()):
-                if sum(1 for _ in module.parameters()) > 0:
+                if any(True for _ in module.parameters()):
                     _wrap_forward_with_checkpoint(module)
                     print(f"[DTR] gradient checkpointing enabled on: {name}")
 
@@ -106,8 +109,11 @@ def dtr_context(
     """Context manager that activates native PyTorch DTR when available.
 
     PyTorch 2.0+ ships an experimental allocator-level DTR implementation
-    accessible via ``torch.cuda.memory._set_allocator_settings``.  When
-    running on an older version this falls back gracefully to a no-op.
+    accessible via the private ``torch.cuda.memory._set_allocator_settings``
+    API.  This API is undocumented and may change between PyTorch releases;
+    the context manager catches ``AttributeError`` and ``RuntimeError`` and
+    falls back to a no-op when the API is unavailable, so it is safe to use
+    on older versions.  Tested with PyTorch >= 2.1.
 
     Parameters
     ----------
