@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
+import math
 import os
+import socket
 import shutil
 import subprocess
 import sys
@@ -11,6 +14,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
+
+try:
+    import matplotlib.pyplot as plt
+except Exception:  # noqa: BLE001
+    plt = None
 
 
 SUPPORTED_MODELS = (
@@ -23,6 +31,19 @@ SUPPORTED_MODELS = (
 )
 
 MMDET_MODELS = {"retinanet", "faster_rcnn", "cascade_rcnn", "detr", "deformable_detr"}
+REPORT_METRICS = [
+    "accuracy",
+    "precision",
+    "recall",
+    "f1",
+    "fps",
+    "inference_time_ms",
+    "map50",
+    "map50_95",
+    "box_loss",
+    "cls_loss",
+    "dfl_loss",
+]
 
 
 @dataclass
@@ -35,13 +56,29 @@ class Paths:
     out_dir: Path
 
 
-def run_cmd(cmd: list[str], cwd: Path | None = None) -> None:
+def run_cmd(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
     print(f"\n[CMD] {' '.join(cmd)}")
-    subprocess.run(cmd, check=True, cwd=str(cwd) if cwd else None)
+    subprocess.run(cmd, check=True, cwd=str(cwd) if cwd else None, env=env)
+
+
+def kaggle_clean_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    env.pop("PYTHONHOME", None)
+    env["PYTHONNOUSERSITE"] = "1"
+    # Keep MIM from pulling OpenXLab integration in constrained Kaggle runtimes.
+    env["MIM_DISABLE_OPENXLAB"] = "1"
+    return env
 
 
 def now_tag() -> str:
     return time.strftime("%Y%m%d_%H%M%S")
+
+
+def pick_free_master_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 def is_kaggle_runtime() -> bool:
@@ -248,18 +285,29 @@ def ensure_yolo_yaml(yolo_yaml: Path, data_root: Path) -> None:
     yolo_yaml.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def install_dependencies(scripts_dir: Path, with_mmdet: bool) -> None:
+def install_dependencies(scripts_dir: Path, with_mmdet: bool, skip_openmim: bool) -> None:
     req = scripts_dir / "requirements_train.txt"
     if req.exists():
         run_cmd([sys.executable, "-m", "pip", "install", "-U", "pip"])
         run_cmd([sys.executable, "-m", "pip", "install", "-r", str(req)])
     if with_mmdet:
-        # mmcv often requires mim on GPU environments.
-        run_cmd([sys.executable, "-m", "pip", "install", "-U", "openmim"])
-        run_cmd([sys.executable, "-m", "mim", "install", "mmcv>=2.1.0,<2.2.0"])
+        # For Kaggle stability, allow bypassing openmim/openxlab and use plain pip.
+        if skip_openmim:
+            run_cmd([sys.executable, "-m", "pip", "install", "mmcv>=2.1.0,<2.2.0"])
+        else:
+            run_cmd([sys.executable, "-m", "pip", "install", "-U", "openmim"])
+            run_cmd([sys.executable, "-m", "mim", "install", "mmcv>=2.1.0,<2.2.0"], env=kaggle_clean_env())
 
 
-def train_yolo(paths: Paths, epochs: int, imgsz: int, batch: int, device: str, workers: int) -> None:
+def train_yolo(
+    paths: Paths,
+    epochs: int,
+    imgsz: int,
+    batch: int,
+    device: str,
+    workers: int,
+    early_stop: int,
+) -> None:
     # Build device argument: comma-separated becomes list notation for YOLO multi-GPU
     device_arg = f"[{device}]" if "," in device else device
     cmd = [
@@ -272,6 +320,7 @@ def train_yolo(paths: Paths, epochs: int, imgsz: int, batch: int, device: str, w
         f"batch={batch}",
         f"device={device_arg}",
         f"workers={workers}",
+        f"patience={max(0, early_stop)}",
         f"project={paths.out_dir.as_posix()}",
         "name=yolo11s",
         "exist_ok=True",
@@ -286,11 +335,21 @@ def mmdet_cfg_path(paths: Paths, model_name: str) -> Path:
     return paths.scripts_dir / "mmdet_configs" / f"{model_name}_pcb.py"
 
 
-def train_mmdet(paths: Paths, model_name: str, epochs: int, gpus: int) -> None:
+def train_mmdet(
+    paths: Paths,
+    model_name: str,
+    epochs: int,
+    gpus: int,
+    mmdet_runner: str,
+    mmdet_python: str | None,
+    early_stop: int,
+) -> None:
     cfg = mmdet_cfg_path(paths, model_name)
     if not cfg.exists():
         raise FileNotFoundError(f"Missing config: {cfg}")
-    work_dir = paths.out_dir / model_name
+    run_tag = now_tag()
+    run_name = f"{model_name}_{run_tag}"
+    work_dir = paths.out_dir / run_name
     work_dir.mkdir(parents=True, exist_ok=True)
 
     # Pass absolute data_root so the config works regardless of cwd.
@@ -305,12 +364,26 @@ def train_mmdet(paths: Paths, model_name: str, epochs: int, gpus: int) -> None:
         f"train_cfg.max_epochs={epochs}",
         f"default_hooks.checkpoint.interval={max(1, min(5, epochs))}",
     ]
+    if early_stop > 0:
+        cfg_options.append(
+            "custom_hooks=[dict(type=EarlyStoppingHook,monitor=coco/bbox_mAP_50,rule=greater,patience="
+            f"{early_stop})]"
+        )
 
+    py_exec = mmdet_python or sys.executable
+    env = kaggle_clean_env()
     if gpus > 1:
+        # Set a unique rendezvous port to avoid collisions with stale distributed jobs.
+        master_port = os.environ.get("MASTER_PORT")
+        if not master_port:
+            master_port = str(pick_free_master_port())
+        env["MASTER_PORT"] = str(master_port)
+        print(f"[INFO] MMDet run_name={run_name}, MASTER_PORT={env['MASTER_PORT']}")
+
         # MMDetection 3.x dropped the legacy --gpus flag; distributed training
         # requires PyTorch DDP launched via torchrun with --launcher pytorch.
         launcher = [
-            sys.executable, "-m", "torch.distributed.run",
+            py_exec, "-m", "torch.distributed.run",
             "--nproc_per_node", str(gpus),
             "-m", "mmdet.tools.train",
             str(cfg),
@@ -319,16 +392,178 @@ def train_mmdet(paths: Paths, model_name: str, epochs: int, gpus: int) -> None:
             "--cfg-options",
         ] + cfg_options
     else:
-        launcher = [
-            "mim",
-            "train",
-            "mmdet",
-            str(cfg),
-            "--work-dir",
-            str(work_dir),
-            "--cfg-options",
-        ] + cfg_options
-    run_cmd(launcher, cwd=paths.repo_root)
+        if mmdet_runner == "mim":
+            launcher = [
+                "mim",
+                "train",
+                "mmdet",
+                str(cfg),
+                "--work-dir",
+                str(work_dir),
+                "--cfg-options",
+            ] + cfg_options
+        else:
+            launcher = [
+                py_exec,
+                "-m",
+                "mmdet.tools.train",
+                str(cfg),
+                "--work-dir",
+                str(work_dir),
+                "--cfg-options",
+            ] + cfg_options
+    run_cmd(launcher, cwd=paths.repo_root, env=env)
+
+
+def safe_float(value: str | float | int | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(result) or math.isinf(result):
+        return None
+    return result
+
+
+def compute_f1(precision: float | None, recall: float | None) -> float | None:
+    p = safe_float(precision)
+    r = safe_float(recall)
+    if p is None or r is None or (p + r) == 0:
+        return None
+    return 2.0 * p * r / (p + r)
+
+
+def extract_yolo_metrics(output_dir: Path) -> dict[str, float | None]:
+    metrics = {k: None for k in REPORT_METRICS}
+    csv_path = output_dir / "results.csv"
+    if not csv_path.exists():
+        return metrics
+
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        return metrics
+
+    last = rows[-1]
+    metrics["precision"] = safe_float(last.get("metrics/precision(B)"))
+    metrics["recall"] = safe_float(last.get("metrics/recall(B)"))
+    metrics["f1"] = compute_f1(metrics["precision"], metrics["recall"])
+    metrics["map50"] = safe_float(last.get("metrics/mAP50(B)"))
+    metrics["map50_95"] = safe_float(last.get("metrics/mAP50-95(B)"))
+    metrics["box_loss"] = safe_float(last.get("train/box_loss"))
+    metrics["cls_loss"] = safe_float(last.get("train/cls_loss"))
+    metrics["dfl_loss"] = safe_float(last.get("train/dfl_loss"))
+    return metrics
+
+
+def extract_mmdet_metrics(output_dir: Path) -> dict[str, float | None]:
+    metrics = {k: None for k in REPORT_METRICS}
+    scalars_path = output_dir / "vis_data" / "scalars.json"
+    if not scalars_path.exists():
+        return metrics
+
+    last_train: dict[str, float | None] = {}
+    last_val: dict[str, float | None] = {}
+    with scalars_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            if "step" in obj:
+                last_train = obj
+            if "coco/bbox_mAP" in obj or "coco/bbox_mAP_50" in obj:
+                last_val = obj
+
+    source = last_val or last_train
+    metrics["map50"] = safe_float(source.get("coco/bbox_mAP_50"))
+    metrics["map50_95"] = safe_float(source.get("coco/bbox_mAP"))
+
+    for key in ("loss_bbox", "loss_cls", "loss_dfl"):
+        if key in last_train:
+            if key == "loss_bbox":
+                metrics["box_loss"] = safe_float(last_train.get(key))
+            elif key == "loss_cls":
+                metrics["cls_loss"] = safe_float(last_train.get(key))
+            elif key == "loss_dfl":
+                metrics["dfl_loss"] = safe_float(last_train.get(key))
+    return metrics
+
+
+def write_metrics_summary(metrics: dict[str, float | None], dest_file: Path) -> None:
+    dest_file.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"metrics": metrics, "generated_at": now_tag()}
+    dest_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def plot_metric_bar(metrics: dict[str, float | None], out_path: Path, title: str) -> None:
+    if plt is None:
+        print("[WARN] matplotlib is unavailable; skipping plot generation.")
+        return
+
+    names: list[str] = []
+    values: list[float] = []
+    for key in REPORT_METRICS:
+        v = safe_float(metrics.get(key))
+        if v is None:
+            continue
+        names.append(key)
+        values.append(v)
+
+    if not names:
+        print(f"[WARN] No numeric metrics found for plotting: {out_path}")
+        return
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(12, 5.5))
+    bars = ax.bar(names, values, color="#1f77b4")
+    ax.set_title(title)
+    ax.set_ylabel("value")
+    ax.grid(axis="y", alpha=0.3)
+    ax.tick_params(axis="x", rotation=30)
+    for bar in bars:
+        h = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2, h, f"{h:.4f}", ha="center", va="bottom", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=220)
+    plt.close(fig)
+
+
+def package_model_results(
+    paths: Paths,
+    model_name: str,
+    result_root: Path,
+    is_yolo: bool,
+) -> Path | None:
+    model_output = resolve_model_output_dir(paths, model_name)
+    if model_output is None:
+        print(f"[WARN] Cannot package '{model_name}': no model output directory found.")
+        return None
+
+    metrics = extract_yolo_metrics(model_output) if is_yolo else extract_mmdet_metrics(model_output)
+    package_dir = result_root / f"{model_name}_{now_tag()}"
+    package_dir.mkdir(parents=True, exist_ok=True)
+
+    model_dest = package_dir / "model"
+    shutil.copytree(model_output, model_dest, dirs_exist_ok=True)
+
+    metrics_json = package_dir / "metrics_summary.json"
+    write_metrics_summary(metrics, metrics_json)
+
+    plot_path = package_dir / "plots" / "metrics_overview.png"
+    plot_metric_bar(metrics, plot_path, title=f"{model_name} metrics")
+
+    zip_base = package_dir
+    zip_path = Path(shutil.make_archive(str(zip_base), "zip", root_dir=str(package_dir)))
+    print(f"[INFO] Result package created: {zip_path}")
+    return zip_path
 
 
 def parse_models(values: Iterable[str]) -> list[str]:
@@ -354,13 +589,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--project", type=Path, default=Path("/kaggle/working/runs"))
     parser.add_argument("--models", nargs="+", default=list(SUPPORTED_MODELS))
     parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--early-stop", type=int, default=4, help="Early stop patience in epochs")
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--batch", type=int, default=32)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--gpus", type=int, default=2)
     parser.add_argument("--yolo-device", type=str, default="0,1")
     parser.add_argument("--checkpoint-root", type=Path, default=Path("/kaggle/working/checkpoints"))
+    parser.add_argument("--result-root", type=Path, default=Path("/kaggle/working/result"))
     parser.add_argument("--checkpoint-every-minutes", type=int, default=60)
+    parser.add_argument(
+        "--mmdet-runner",
+        type=str,
+        choices=["module", "mim"],
+        default="module",
+        help="How to launch MMDetection training. 'module' avoids openxlab-related conflicts on Kaggle.",
+    )
+    parser.add_argument(
+        "--mmdet-python",
+        type=str,
+        default=None,
+        help="Optional Python executable for MMDet train (for isolated venv on Kaggle).",
+    )
+    parser.add_argument(
+        "--skip-openmim",
+        action="store_true",
+        help="Install mmcv via pip and avoid openmim/openxlab dependency path.",
+    )
     parser.add_argument("--no-cleanup-before-train", action="store_true")
     parser.add_argument("--install-deps", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -401,19 +656,27 @@ def main() -> None:
 
     checkpoint_root = args.checkpoint_root.resolve()
     checkpoint_root.mkdir(parents=True, exist_ok=True)
+    result_root = args.result_root.resolve()
+    result_root.mkdir(parents=True, exist_ok=True)
     print_runtime_summary(project_dir=paths.out_dir, checkpoint_root=checkpoint_root)
 
     if not args.no_cleanup_before_train:
         cleanup_before_train(paths=paths, models=models, checkpoint_root=checkpoint_root)
 
     if args.install_deps:
-        install_dependencies(scripts_dir=scripts_dir, with_mmdet=any(m in MMDET_MODELS for m in models))
+        install_dependencies(
+            scripts_dir=scripts_dir,
+            with_mmdet=any(m in MMDET_MODELS for m in models),
+            skip_openmim=args.skip_openmim,
+        )
 
     print("[INFO] Training plan")
     print(f"  repo_root: {paths.repo_root}")
     print(f"  data_root: {paths.data_root}")
     print(f"  project:   {paths.out_dir}")
     print(f"  ckpt_root: {checkpoint_root}")
+    print(f"  result:    {result_root}")
+    print(f"  early_stop:{args.early_stop}")
     print(f"  models:    {models}")
 
     if args.dry_run:
@@ -441,9 +704,18 @@ def main() -> None:
                     batch=args.batch,
                     device=args.yolo_device,
                     workers=args.workers,
+                    early_stop=args.early_stop,
                 )
             else:
-                train_mmdet(paths=paths, model_name=model_name, epochs=args.epochs, gpus=args.gpus)
+                train_mmdet(
+                    paths=paths,
+                    model_name=model_name,
+                    epochs=args.epochs,
+                    gpus=args.gpus,
+                    mmdet_runner=args.mmdet_runner,
+                    mmdet_python=args.mmdet_python,
+                    early_stop=args.early_stop,
+                )
 
             snapshot_model_artifacts(
                 paths=paths,
@@ -452,6 +724,12 @@ def main() -> None:
                 reason="model_completed",
             )
             save_completed_model(paths=paths, model_name=model_name, saved_models_root=saved_models_root)
+            package_model_results(
+                paths=paths,
+                model_name=model_name,
+                result_root=result_root,
+                is_yolo=(model_name == "yolo11s"),
+            )
         finally:
             stop_event.set()
             checkpoint_thread.join(timeout=5)
