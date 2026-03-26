@@ -1,2 +1,10 @@
-# Training requirements used by scripts/train_kaggle.py and notebooks/pcb_defect_train.ipynb
--r ../requirements_kaggle.txt
+ultralytics>=8.3.0
+torch>=2.4.0
+torchvision>=0.19.0
+pycocotools>=2.0.8
+transformers>=4.46.0
+torchmetrics>=1.4.0
+accelerate>=1.0.0
+mmengine>=0.10.5
+mmdet>=3.3.0
+openmim>=0.3.9

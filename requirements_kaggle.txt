@@ -26,3 +26,11 @@ openmim>=0.3.9
 mmengine>=0.10.5
 mmdet>=3.3.0
 mmcv>=2.1.0,<2.2.0
+
+# These common packages ship with outdated versions on Kaggle GPU images.
+# Pin them here so pip upgrades them, preventing dependency-resolver conflicts
+# raised by ultralytics/transformers/accelerate and their transitive deps.
+requests>=2.32.4
+urllib3>=2.6.3
+filelock>=3.15.0
+rich>=13.7.1
